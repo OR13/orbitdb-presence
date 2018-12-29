@@ -1,0 +1,75 @@
+<script src="https://unpkg.com/ipfs@0.33.1/dist/index.js"></script>
+<script src="https://unpkg.com/orbit-db@0.19.9/dist/orbitdb.min.js"></script>
+
+<pre id="pre"></pre>
+<script>
+  const ipfsConfig = {
+    repo: "orbitdb/presence/" + Math.random(),
+    start: true,
+    EXPERIMENTAL: {
+      pubsub: true
+    },
+    config: {
+      Addresses: {
+        Swarm: [
+          // "/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star"
+          // "/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star",
+          "/dns4/wrtc-star.discovery.libp2p.io/tcp/443/wss/p2p-webrtc-star"
+        ]
+      }
+    }
+  };
+
+  // Configuration for the database
+  const dbConfig = {
+    // If database doesn't exist, create it
+    create: true,
+    // Don't wait to load from the network
+    sync: true,
+    // Load only the local version of the database
+    localOnly: true,
+    // Allow anyone to write to the database,
+    // otherwise only the creator of the database can write
+    admin: ["*"],
+    write: ["*"]
+  };
+
+  const store = async name => {
+    return new Promise((resolve, reject) => {
+      const ipfs = new Ipfs(ipfsConfig);
+      ipfs.on("error", e => console.error(e));
+      ipfs.on("ready", async () => {
+        try {
+          const orbitdb = new OrbitDB(ipfs);
+          const db = await orbitdb.docs(name, dbConfig);
+          resolve(db);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  };
+  (async () => {
+    const db = await store("test123");
+    const id = (await db._ipfs.id()).id;
+    const address = db.address.toString();
+    await db.load();
+    await db.put({ _id: id, connected: new Date().toISOString() });
+    setInterval(async () => {
+      await db.load();
+      document.getElementById("pre").innerHTML = JSON.stringify(
+        {
+          address,
+          id,
+          data: db.query(doc => {
+            return doc._id;
+          }),
+          databasePeers: await db._ipfs.pubsub.peers(address),
+          networkPeers: await db._ipfs.pubsub.peers()
+        },
+        null,
+        2
+      );
+    }, 3 * 1000);
+  })();
+</script>
